@@ -1,45 +1,4 @@
-name: Flyway Migrations Pipeline
-
-on:
-  push:
-    paths:
-      - 'migrations/**'
-  workflow_dispatch:
-
-jobs:
-  migrate:
-    runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8
-        env:
-          MYSQL_ROOT_PASSWORD: Secret5555
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -pSecret5555"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=30
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Wait for MySQL and create database
-        run: |
-          for i in {1..60}; do
-            if mysqladmin ping -h 127.0.0.1 -uroot -pSecret5555 --silent; then
-              echo "✅ MySQL is ready!"
-              break
-            fi
-            echo "Waiting for MySQL... ($i/60)"
-            sleep 2
-          done
-          mysql -h 127.0.0.1 -uroot -pSecret5555 -e "CREATE DATABASE IF NOT EXISTS flyway_test;"
-
-      - name: Run Flyway using Docker
+      - name: Run Flyway Migrate
         run: |
           echo "🧩 Running Flyway migrations..."
           docker run --rm \
@@ -50,4 +9,16 @@ jobs:
             -url=jdbc:mysql://127.0.0.1:3306/flyway_test \
             -user=root \
             -password=Secret5555 \
-            validate migrate
+            migrate
+
+      - name: Run Flyway Validate (optional)
+        run: |
+          docker run --rm \
+            --network host \
+            -v "${{ github.workspace }}/migrations:/flyway/sql" \
+            redgate/flyway \
+            -locations=filesystem:/flyway/sql \
+            -url=jdbc:mysql://127.0.0.1:3306/flyway_test \
+            -user=root \
+            -password=Secret5555 \
+            validate
