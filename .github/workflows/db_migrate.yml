@@ -27,38 +27,26 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install MySQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mysql-client curl unzip
-
       - name: Wait for MySQL and create database
         run: |
           for i in {1..60}; do
             if mysqladmin ping -h 127.0.0.1 -uroot -pSecret5555 --silent; then
-              echo "MySQL is ready!"
+              echo "✅ MySQL is ready!"
               break
             fi
             echo "Waiting for MySQL... ($i/60)"
             sleep 2
           done
-          mysql -h 127.0.0.1 -uroot -pSecret5555 -e "CREATE DATABASE IF NOT EXISTS flyway_test; SHOW DATABASES;"
+          mysql -h 127.0.0.1 -uroot -pSecret5555 -e "CREATE DATABASE IF NOT EXISTS flyway_test;"
 
-      - name: Install Flyway CLI
+      - name: Run Flyway using Docker
         run: |
-          curl -L -o flyway.zip https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/11.15.0/flyway-commandline-11.15.0-linux-x64.zip
-          unzip flyway.zip
-          sudo mv flyway-11.15.0 /usr/local/flyway
-          sudo ln -s /usr/local/flyway/flyway /usr/local/bin/flyway
-          flyway -v
-
-      - name: Validate and Migrate
-        run: |
-          echo "Listing migration files:"
-          ls -la "${{ github.workspace }}/migrations" || true
-
-          flyway \
-            -locations=filesystem:${{ github.workspace }}/migrations \
+          echo "🧩 Running Flyway migrations..."
+          docker run --rm \
+            --network host \
+            -v "${{ github.workspace }}/migrations:/flyway/sql" \
+            redgate/flyway \
+            -locations=filesystem:/flyway/sql \
             -url=jdbc:mysql://127.0.0.1:3306/flyway_test \
             -user=root \
             -password=Secret5555 \
