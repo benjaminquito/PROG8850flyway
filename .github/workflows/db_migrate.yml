@@ -21,7 +21,7 @@ jobs:
           --health-cmd="mysqladmin ping -h 127.0.0.1 -pSecret5555"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=30
 
     steps:
       - name: Check out repository
@@ -30,28 +30,33 @@ jobs:
       - name: Install MySQL client
         run: |
           sudo apt-get update
-          sudo apt-get install -y mysql-client
+          sudo apt-get install -y mysql-client curl unzip
 
       - name: Wait for MySQL and create database
         run: |
-          # Wait until MySQL service is healthy
-          for i in {1..30}; do
-            mysqladmin ping -h 127.0.0.1 -uroot -pSecret5555 && break
-            echo "Waiting for MySQL..."
+          for i in {1..60}; do
+            if mysqladmin ping -h 127.0.0.1 -uroot -pSecret5555 --silent; then
+              echo "MySQL is ready!"
+              break
+            fi
+            echo "Waiting for MySQL... ($i/60)"
             sleep 2
           done
-          # Create target DB if not exists
-          mysql -h 127.0.0.1 -P 3306 -uroot -pSecret5555 -e "CREATE DATABASE IF NOT EXISTS flyway_test;"
+          mysql -h 127.0.0.1 -uroot -pSecret5555 -e "CREATE DATABASE IF NOT EXISTS flyway_test; SHOW DATABASES;"
 
-      - name: Download Flyway CLI
+      - name: Install Flyway CLI
         run: |
-          curl -L -o flyway.tar.gz https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/11.0.0/flyway-commandline-11.0.0-linux-x64.tar.gz
-          tar -xzf flyway.tar.gz
-          sudo mv flyway-11.0.0/flyway /usr/local/bin/flyway
+          curl -L -o flyway.zip https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/11.15.0/flyway-commandline-11.15.0-linux-x64.zip
+          unzip flyway.zip
+          sudo mv flyway-11.15.0 /usr/local/flyway
+          sudo ln -s /usr/local/flyway/flyway /usr/local/bin/flyway
           flyway -v
 
       - name: Validate and Migrate
         run: |
+          echo "Listing migration files:"
+          ls -la "${{ github.workspace }}/migrations" || true
+
           flyway \
             -locations=filesystem:${{ github.workspace }}/migrations \
             -url=jdbc:mysql://127.0.0.1:3306/flyway_test \
