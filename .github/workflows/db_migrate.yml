@@ -1,0 +1,60 @@
+name: Flyway Migrations Pipeline
+
+on:
+  push:
+    paths:
+      - 'migrations/**'
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: Secret5555
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pSecret5555"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install MySQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client
+
+      - name: Wait for MySQL and create database
+        run: |
+          # Wait until MySQL service is healthy
+          for i in {1..30}; do
+            mysqladmin ping -h 127.0.0.1 -uroot -pSecret5555 && break
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          # Create target DB if not exists
+          mysql -h 127.0.0.1 -P 3306 -uroot -pSecret5555 -e "CREATE DATABASE IF NOT EXISTS flyway_test;"
+
+      - name: Download Flyway CLI
+        run: |
+          curl -L -o flyway.tar.gz https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/11.0.0/flyway-commandline-11.0.0-linux-x64.tar.gz
+          tar -xzf flyway.tar.gz
+          sudo mv flyway-11.0.0/flyway /usr/local/bin/flyway
+          flyway -v
+
+      - name: Validate and Migrate
+        run: |
+          flyway \
+            -locations=filesystem:${{ github.workspace }}/migrations \
+            -url=jdbc:mysql://127.0.0.1:3306/flyway_test \
+            -user=root \
+            -password=Secret5555 \
+            validate migrate
